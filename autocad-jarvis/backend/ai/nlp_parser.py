@@ -69,6 +69,8 @@ class FloorConfig(BaseModel):
 
 class ProjectRequest(BaseModel):
     """Tam proje tanımı — NLP çıktısı."""
+    model_config = {"extra": "ignore"}  # AI'ın gönderdiği ekstra alanları yoksay
+    
     project_name: str = "Yeni Proje"
     building_type: Literal["konut", "ofis", "ticaret", "karma"] = "konut"
     parcel: ParcelRequest = Field(default_factory=ParcelRequest)

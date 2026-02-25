@@ -416,6 +416,44 @@ class AIArchitect:
             data = _repair_json(raw)
             data["raw_prompt"] = user_prompt
 
+            # ── AI alanlarını sanitize et (dict → simple value) ───────────
+            # AI bazen total_area_m2 için dict döndürüyor
+            if isinstance(data.get("total_area_m2"), dict):
+                area_dict = data["total_area_m2"]
+                # Dict'ten toplam alanı çıkar
+                total = 0
+                for k, v in area_dict.items():
+                    if isinstance(v, (int, float)):
+                        total += v
+                    elif isinstance(v, str):
+                        try:
+                            total += float(v.replace(",", ".").split()[0])
+                        except (ValueError, IndexError):
+                            pass
+                data["total_area_m2"] = total if total > 0 else 0.0
+                print(f"[{_ts()}] [AI-ARCHITECT] ℹ️ total_area_m2 dict → {data['total_area_m2']:.0f}m²")
+
+            # AI bazen parking_count için dict döndürüyor
+            if isinstance(data.get("parking_count"), dict):
+                pk = data["parking_count"]
+                count = pk.get("count", pk.get("total", pk.get("required", 0)))
+                if isinstance(count, str):
+                    try:
+                        count = int(count)
+                    except ValueError:
+                        count = 0
+                data["parking_count"] = int(count) if isinstance(count, (int, float)) else 0
+                print(f"[{_ts()}] [AI-ARCHITECT] ℹ️ parking_count dict → {data['parking_count']}")
+
+            # Sayısal alanları zorla float/int yap
+            if not isinstance(data.get("total_area_m2"), (int, float)):
+                data["total_area_m2"] = 0.0
+            if not isinstance(data.get("parking_count"), int):
+                try:
+                    data["parking_count"] = int(data.get("parking_count", 0))
+                except (ValueError, TypeError):
+                    data["parking_count"] = 0
+
             # Strip extra fields GPT might add (door/window schedule etc.)
             # These are logged but not part of ProjectRequest pydantic model
             door_schedule = data.pop("door_schedule", [])
