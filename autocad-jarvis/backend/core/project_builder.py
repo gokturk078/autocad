@@ -121,8 +121,23 @@ class ProjectBuilder:
         building_type = BuildingType(request.building_type)
 
         # Tahmini yükseklik (iteratif olarak düzeltilecek)
-        above_ground = request.floors.normal_floors + (1 if request.floors.ground_floor else 0) + (1 if request.floors.attic else 0)
+        normal_floors = request.floors.normal_floors
+        above_ground = normal_floors + (1 if request.floors.ground_floor else 0) + (1 if request.floors.attic else 0)
         est_height = above_ground * request.floors.floor_height
+
+        # ────── YÜKSEKLIK ENFORCELAMASı ──────
+        max_height = getattr(parcel, 'max_height', 21.50) or 21.50
+        basement_height = request.floors.basement_count * 2.60
+        ground_height = 3.50 if request.floors.ground_floor else 0
+        attic_height = request.floors.floor_height if request.floors.attic else 0
+        available_for_normal = max_height - ground_height - attic_height
+        max_normal_by_height = max(1, int(available_for_normal / request.floors.floor_height))
+
+        if normal_floors > max_normal_by_height:
+            print(f"[{_ts()}] [BUILDER] ⚠ Yükseklik aşımı! {normal_floors} kat → {max_normal_by_height} kat (max {max_height}m)")
+            normal_floors = max_normal_by_height
+            above_ground = normal_floors + (1 if request.floors.ground_floor else 0) + (1 if request.floors.attic else 0)
+            est_height = above_ground * request.floors.floor_height
 
         buildable_w, buildable_d = self.code.calculate_buildable_area(parcel, est_height)
 
@@ -141,18 +156,24 @@ class ProjectBuilder:
         # Kat toplam alanı
         floor_total = floor_unit_area + common_area
 
-        # Bina oturumu — constraint: buildable alana sığmalı
-        footprint_area = floor_total
-        fp_w = min(buildable_w, math.sqrt(footprint_area * (buildable_w / max(buildable_d, 1))))
-        fp_d = footprint_area / fp_w if fp_w > 0 else 0
+        # ────── TAKS OPTİMİZASYONU ──────
+        # Bina oturumunu çekme mesafelerine sığdır AMA TAKS ≥ 0.25 olsun
+        # Öncelik: buildable alanı DOLDUR (boşa arsa harcama)
+        fp_w = min(buildable_w, max(buildable_w * 0.85, math.sqrt(floor_total * (buildable_w / max(buildable_d, 1)))))
+        fp_d = floor_total / fp_w if fp_w > 0 else 0
 
         # Oturumu çekme alanına sığdır
         if fp_d > buildable_d:
             fp_d = buildable_d
-            fp_w = footprint_area / fp_d if fp_d > 0 else 0
-            if fp_w > buildable_w:
-                fp_w = buildable_w
-                fp_d = buildable_d
+            fp_w = min(buildable_w, floor_total / fp_d if fp_d > 0 else buildable_w)
+
+        # TAKS kontrolü — minimum %25 arsa kullanımı
+        taks = (fp_w * fp_d) / parcel.area if parcel.area > 0 else 0
+        if taks < 0.25 and buildable_w > 0 and buildable_d > 0:
+            # Binayı buildable alanın %80'ine genişlet
+            fp_w = buildable_w * 0.90
+            fp_d = buildable_d * 0.85
+            print(f"[{_ts()}] [BUILDER] ⚠ TAKS düşük ({taks:.3f}) → Bina genişletildi: {fp_w:.1f}×{fp_d:.1f}m")
 
         # ── 4. Katları oluştur ───────────────────────────────────────────
         floors: list[FloorSpec] = []
@@ -181,8 +202,8 @@ class ProjectBuilder:
                 corridor_area=corridor_area,
             ))
 
-        # Normal katlar
-        for i in range(request.floors.normal_floors):
+        # Normal katlar (capped by height enforcement)
+        for i in range(normal_floors):
             floor_num = i + 1
             floors.append(FloorSpec(
                 floor_number=floor_num,
@@ -197,7 +218,7 @@ class ProjectBuilder:
         # Çatı katı
         if request.floors.attic:
             floors.append(FloorSpec(
-                floor_number=request.floors.normal_floors + 1,
+                floor_number=normal_floors + 1,
                 floor_type="cati",
                 units=units_per_floor,
                 height_gross=request.floors.floor_height,

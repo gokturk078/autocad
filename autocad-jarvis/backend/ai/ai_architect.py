@@ -228,6 +228,28 @@ Pencere Tipleri:
 
 ═══ 6. ÇIKTI KURALLARI ═══
 
+*** KRİTİK HARD RULES — İHLAL EDİLEMEZ ***
+
+HR-1 YÜKSEKLIK: total_height = (basement_count × 2.60) + (ground_floor ? 3.50 : 0) + (normal_floors × floor_height)
+     → total_height ≤ max_height ZORUNLU. Aşarsa normal_floors'u AZALT.
+     → Varsayılan max_height = 21.50m (belirtilmezse)
+
+HR-2 TAKS: TAKS = footprint / parcel_area → 0.25 ≤ TAKS ≤ taks_limit (max 0.40)
+     → footprint = building_width × building_depth
+     → building_width = parcel_width - 2×side_setback
+     → building_depth = parcel_depth - front_setback - rear_setback
+     → TAKS < 0.20 dururu YASAK — arsayı boşa harcıyorsun!
+
+HR-3 KAT SAYISI: normal_floors = min(kullanıcı talebi, max_floors, floor(max_height / floor_height))
+
+HR-4 ODA ALANI: Her odanın width ve depth değerlerini VER. 
+     width × depth = min_area_m2. Aspect ratio 1:1 ile 1:2.5 arası.
+
+HR-5 BİNA BOYUTU: parcel bilgisi varsa bina boyutunu HESAPLA:
+     building_width = parcel.width - 2 × side_setback
+     building_depth = parcel.depth - front_setback - rear_setback
+     Bu değerleri JSON'a dahil ET.
+
 1. SADECE geçerli JSON döndür. Açıklama, markdown, kod bloğu YOK.
 2. Her oda için gerçekçi alan VE boyut hesapla:
    - width ve depth belirt (aspect ratio 1:1 ~ 1:2.5)

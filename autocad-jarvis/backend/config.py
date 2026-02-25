@@ -8,10 +8,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Central configuration sourced from .env file and environment variables."""
 
-    # OpenRouter (primary — Gemini 2.5 Pro)
+    # OpenRouter (primary — Claude Sonnet 4.6)
     openrouter_api_key: str = ""
-    ai_model: str = "google/gemini-2.5-pro"
-    ai_fast_model: str = "google/gemini-2.5-flash"
+    ai_model: str = "anthropic/claude-sonnet-4.6"
+    ai_fast_model: str = "anthropic/claude-sonnet-4.6"
     ai_base_url: str = "https://openrouter.ai/api/v1"
 
     # OpenAI fallback

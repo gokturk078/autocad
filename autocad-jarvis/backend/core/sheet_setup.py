@@ -98,17 +98,18 @@ def setup_layers(doc: Drawing) -> None:
 
 
 def setup_text_styles(doc: Drawing) -> None:
-    """Metin stilleri tanımla."""
+    """Metin stilleri tanımla — AutoCAD built-in fontlar."""
     styles = doc.styles
 
+    # txt.shx = AutoCAD'in her sürümünde bulunan varsayılan font
     if "TITLE" not in styles:
-        styles.new("TITLE", dxfattribs={"font": "Arial", "height": 0})
+        styles.new("TITLE", dxfattribs={"font": "txt", "height": 0})
     if "ROOM_NAME" not in styles:
-        styles.new("ROOM_NAME", dxfattribs={"font": "Arial", "height": 0})
+        styles.new("ROOM_NAME", dxfattribs={"font": "txt", "height": 0})
     if "DIM" not in styles:
-        styles.new("DIM", dxfattribs={"font": "Arial", "height": 0})
+        styles.new("DIM", dxfattribs={"font": "txt", "height": 0})
     if "ANNO" not in styles:
-        styles.new("ANNO", dxfattribs={"font": "Arial", "height": 0})
+        styles.new("ANNO", dxfattribs={"font": "txt", "height": 0})
 
 
 def setup_dim_style(doc: Drawing) -> None:
@@ -128,12 +129,13 @@ def setup_dim_style(doc: Drawing) -> None:
 
 
 def create_new_dxf() -> Drawing:
-    """Yapılandırılmış yeni DXF document oluştur."""
-    doc = ezdxf.new("R2013")
+    """Yapılandırılmış yeni DXF document oluştur — R2000 (tüm AutoCAD sürümleri)."""
+    doc = ezdxf.new("R2000")
 
-    # Header
-    doc.header["$INSUNITS"] = 6   # Metre
-    doc.header["$MEASUREMENT"] = 1  # Metrik
+    # Header — encoding + metric
+    doc.header["$INSUNITS"] = 6      # Metre
+    doc.header["$MEASUREMENT"] = 1   # Metrik
+    doc.header["$DWGCODEPAGE"] = "ANSI_1254"  # Türkçe Windows-1254
 
     # Layer'lar
     setup_layers(doc)

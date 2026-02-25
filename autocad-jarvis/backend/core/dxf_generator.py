@@ -41,6 +41,15 @@ def _ts() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _safe_save(doc: Drawing, path: str) -> None:
+    """DXF dosyasını audit edip güvenli kaydet — AutoCAD uyumluluğu için."""
+    # ezdxf auditor — bozuk entity'leri otomatik onar
+    auditor = doc.audit()
+    if auditor.has_errors:
+        print(f"[{_ts()}] [DXF-GEN] ⚠ Audit: {len(auditor.errors)} hata onarıldı → {os.path.basename(path)}")
+    doc.saveas(path)
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # ProjectOutput Dataclass
 # ══════════════════════════════════════════════════════════════════════════════
@@ -293,7 +302,7 @@ class ArchitecturalDXFGenerator:
 
         draw_title_block(msp, area, scale, project_name, "Vaziyet Planı", "1/200", "A-01",
                          sheet_num_total(building), city=city)
-        doc.saveas(path)
+        _safe_save(doc, path)
 
     # ── Kat Planı ───────────────────────────────────────────────────────
 
@@ -380,7 +389,7 @@ class ArchitecturalDXFGenerator:
 
         draw_title_block(msp, area, scale, project_name, sheet_title, "1/100",
                          sheet_number, sheet_num_total(None), city=city)
-        doc.saveas(path)
+        _safe_save(doc, path)
 
     # ── Yeni yardımcı: Çift çizgi duvarlar ──────────────────────────────
 
@@ -657,7 +666,7 @@ class ArchitecturalDXFGenerator:
 
         draw_title_block(msp, area, scale, project_name, f"Kesit {section_type}",
                          "1/100", sheet_number, sheet_num_total(None), city=city)
-        doc.saveas(path)
+        _safe_save(doc, path)
 
     # ── Görünüş ─────────────────────────────────────────────────────────
 
@@ -690,7 +699,7 @@ class ArchitecturalDXFGenerator:
         }
         draw_title_block(msp, area, scale, project_name, facade_labels[facade],
                          "1/100", sheet_number, sheet_num_total(None), city=city)
-        doc.saveas(path)
+        _safe_save(doc, path)
 
     # ── Çatı Planı ──────────────────────────────────────────────────────
 
@@ -734,7 +743,7 @@ class ArchitecturalDXFGenerator:
 
         draw_title_block(msp, area, scale, project_name, "Çatı Planı", "1/100",
                          sheet_number, sheet_num_total(None), city=city)
-        doc.saveas(path)
+        _safe_save(doc, path)
 
     # ── Alan Hesap Tablosu ──────────────────────────────────────────────
 
@@ -822,7 +831,7 @@ class ArchitecturalDXFGenerator:
 
         draw_title_block(msp, area, scale, project_name, "Alan Hesap Tablosu", "—",
                          sheet_number, sheet_num_total(None), city=city)
-        doc.saveas(path)
+        _safe_save(doc, path)
 
     # ── Yardımcılar ─────────────────────────────────────────────────────
 
@@ -1208,7 +1217,7 @@ class DXFGenerator:
             ).set_placement((rl.x + rl.w / 2, rl.y + rl.h / 2),
                             align=ezdxf.enums.TextEntityAlignment.CENTER)
 
-        doc.saveas(output_path)
+        _safe_save(doc, output_path)
         return output_path
 
 
@@ -1238,5 +1247,5 @@ def create_test_dxf(output_path: str) -> str:
             dxfattribs={"layer": "A-TEXT", "height": 0.20},
         ).set_placement((x + w / 2, y + h / 2), align=ezdxf.enums.TextEntityAlignment.CENTER)
 
-    doc.saveas(output_path)
+    _safe_save(doc, output_path)
     return output_path
