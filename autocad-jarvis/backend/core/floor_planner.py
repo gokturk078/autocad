@@ -40,6 +40,30 @@ PARTITION = 0.07      # m — bölme duvar
 CORRIDOR_WIDTH = 1.40  # m — koridor net genişlik
 MIN_ROOM_DIM = 2.40    # m — oda minimum kenar uzunluğu
 
+# ── Oda Boyut Tablosu (min_w, max_w, min_d, max_d, min_area) ────────────
+ROOM_DEFAULTS: dict[str, dict] = {
+    "salon":       {"min_w": 4.5, "max_w": 6.5, "min_d": 5.0, "max_d": 7.0, "min_area": 22},
+    "yatak_odasi": {"min_w": 3.0, "max_w": 4.5, "min_d": 3.5, "max_d": 5.0, "min_area": 12},
+    "mutfak":      {"min_w": 2.5, "max_w": 4.0, "min_d": 3.0, "max_d": 4.5, "min_area": 8},
+    "banyo":       {"min_w": 1.8, "max_w": 2.8, "min_d": 2.2, "max_d": 3.0, "min_area": 4},
+    "wc":          {"min_w": 0.9, "max_w": 1.5, "min_d": 1.5, "max_d": 2.0, "min_area": 1.5},
+    "hol":         {"min_w": 1.5, "max_w": 3.0, "min_d": 2.0, "max_d": 3.5, "min_area": 4},
+    "koridor":     {"min_w": 1.2, "max_w": 2.0, "min_d": 3.0, "max_d": 10.0, "min_area": 4},
+    "balkon":      {"min_w": 1.5, "max_w": 3.0, "min_d": 1.2, "max_d": 2.5, "min_area": 3},
+    "giyinme":     {"min_w": 1.5, "max_w": 2.5, "min_d": 2.0, "max_d": 3.0, "min_area": 4},
+    "depo":        {"min_w": 1.0, "max_w": 2.0, "min_d": 1.5, "max_d": 2.5, "min_area": 2},
+}
+
+# ── Pencere Boyutu → Oda Tipine Göre ─────────────────────────────────────
+WINDOW_BY_ROOM: dict[str, str] = {
+    "salon":       "WINDOW_200x150",
+    "yatak_odasi": "WINDOW_150x150",
+    "mutfak":      "WINDOW_100x120",
+    "banyo":       "WINDOW_60x60",
+    "wc":          "WINDOW_60x60",
+    "balkon":      "WINDOW_240x220",
+}
+
 STAIR_W = 2.50         # m — U-tipi merdiven genişliği
 STAIR_D = 5.60         # m — U-tipi merdiven derinliği
 ELEV_W = 1.60          # m — asansör kabini genişlik
@@ -648,12 +672,13 @@ class FloorPlanner:
         facade: str,
     ) -> None:
         """
-        Tek daire içinde odaları yerleştir.
+        Tek daire içinde odaları constraint-based grid pack ile yerleştir.
 
         Strateji:
-        - CEPHE SIRASI: Salon, Yatak1, Yatak2... → dış duvar (pencereli)
-        - İÇ SIRA: Mutfak, Banyo, WC, Hol → koridor tarafı (shaft hizası)
-        - Odalar target area'ya ± %5 fitting
+        - CEPHE SIRASI: Salon + Yatak odaları → dış duvar (büyük pencereler)
+        - İÇ SIRA: Hol + Mutfak + Banyo + WC → koridor tarafı (tesisat şaftı)
+        - Her oda ROOM_DEFAULTS tablosundan gerçekçi boyut alır
+        - Aspect ratio 1:1 ile 1:2 arasında zorlanır
         """
         rooms = unit.rooms
         if not rooms:
@@ -661,43 +686,59 @@ class FloorPlanner:
 
         iw = self.int_wall
 
-        # Odaları kategorize
-        living = [rm for rm in rooms if rm.room_type in ("salon", "yatak_odasi")]
-        wet = [rm for rm in rooms if rm.room_type in ("mutfak", "banyo", "wc")]
-        other = [rm for rm in rooms if rm.room_type in ("hol", "koridor", "balkon", "depo")]
+        # ── Odaları kategorize ────────────────────────────────────────
+        facade_rooms = [rm for rm in rooms if rm.room_type in ("salon", "yatak_odasi")]
+        inner_rooms = [rm for rm in rooms if rm.room_type in ("mutfak", "banyo", "wc")]
+        other_rooms = [rm for rm in rooms if rm.room_type in ("hol", "koridor", "balkon", "depo", "giyinme")]
 
-        # Hol'ü ıslak sıranın başına ekle (çakışma önleme)
-        hol_rooms = [rm for rm in other if rm.room_type == "hol"]
-        wet_with_hol = hol_rooms + wet
+        # Hol'ü iç sıranın başına ekle
+        hol_rooms = [rm for rm in other_rooms if rm.room_type == "hol"]
+        inner_with_hol = hol_rooms + inner_rooms
 
-        # Alan oranları hesapla (target area'ya göre)
-        total_target = sum(rm.area for rm in rooms)
-        living_target = sum(rm.area for rm in living) if living else 0
-
-        # Yaşam/ıslak derinlik dağılımı
+        # ── Derinlik hesaplaması ──────────────────────────────────────
+        # Cephe sırası: odaların ortalama derinliğine göre
         available_h = unit_h - iw  # araya duvar girer
 
-        if total_target > 0 and living_target > 0:
-            living_ratio = living_target / total_target
+        # Cephe odaları daha derin (salon, yatak), iç odalar daha sığ (banyo, wc)
+        facade_default_depth = 0
+        if facade_rooms:
+            facade_depths = []
+            for rm in facade_rooms:
+                rd = ROOM_DEFAULTS.get(rm.room_type, {})
+                target_d = (rd.get("min_d", 3.5) + rd.get("max_d", 5.0)) / 2
+                facade_depths.append(target_d)
+            facade_default_depth = sum(facade_depths) / len(facade_depths)
+
+        inner_default_depth = 0
+        if inner_with_hol:
+            inner_depths = []
+            for rm in inner_with_hol:
+                rd = ROOM_DEFAULTS.get(rm.room_type, {})
+                target_d = (rd.get("min_d", 2.0) + rd.get("max_d", 3.0)) / 2
+                inner_depths.append(target_d)
+            inner_default_depth = sum(inner_depths) / len(inner_depths)
+
+        # Derinlik dağılımı: zone toplam derinliğe sığdır
+        total_default = facade_default_depth + inner_default_depth
+        if total_default > 0:
+            facade_ratio = facade_default_depth / total_default
         else:
-            living_ratio = 0.60
+            facade_ratio = 0.60
 
-        living_ratio = max(0.50, min(0.70, living_ratio))
-        living_depth = available_h * living_ratio
-        wet_depth = available_h - living_depth
+        facade_ratio = max(0.50, min(0.70, facade_ratio))
+        facade_depth = round(available_h * facade_ratio, 2)
+        inner_depth = round(available_h - facade_depth, 2)
 
-        # Y pozisyonu cepheye bağlı
+        # ── Y pozisyonu cepheye bağlı ────────────────────────────────
         if facade == "south":
-            # Yaşam → güney (dış), ıslak → kuzey (iç/koridor)
-            living_y = uy
-            wet_y = uy + living_depth + iw
+            facade_y = uy
+            inner_y = uy + facade_depth + iw
         else:
-            # Yaşam → kuzey (dış), ıslak → güney (iç/koridor)
-            wet_y = uy
-            living_y = uy + wet_depth + iw
+            inner_y = uy
+            facade_y = uy + inner_depth + iw
 
-        # Yatay ayırıcı duvar (yaşam — ıslak arası)
-        sep_wall_y = wet_y if facade == "south" else wet_y + wet_depth
+        # ── Yatay ayırıcı duvar ──────────────────────────────────────
+        sep_wall_y = inner_y if facade == "south" else inner_y + inner_depth
         r.walls.append(Wall(
             start=(ux, sep_wall_y),
             end=(ux + unit_w, sep_wall_y),
@@ -705,14 +746,13 @@ class FloorPlanner:
             layer="A-WALL-INT",
         ))
 
-        # ── Yaşam alanları yerleştir ────────────────────────────────
-        self._place_row(r, living, ux, living_y, unit_w, living_depth, unit.unit_id, "")
+        # ── Cephe sırasına yerleştir ─────────────────────────────────
+        self._pack_rooms_in_row(r, facade_rooms, ux, facade_y, unit_w, facade_depth, unit.unit_id, "facade")
 
-        # ── Islak hacimler + hol birlikte yerleştir ─────────────────
-        self._place_row(r, wet_with_hol, ux, wet_y, unit_w, wet_depth, unit.unit_id, "wet")
+        # ── İç sıraya yerleştir ──────────────────────────────────────
+        self._pack_rooms_in_row(r, inner_with_hol, ux, inner_y, unit_w, inner_depth, unit.unit_id, "wet")
 
-
-    def _place_row(
+    def _pack_rooms_in_row(
         self,
         r: FloorPlanResult,
         rooms: list[RoomSpec],
@@ -722,8 +762,12 @@ class FloorPlanner:
         row_type: str,
     ) -> None:
         """
-        Bir sıra içinde odaları soldan sağa yerleştir.
-        Her oda target area'ya mümkün olduğunca yakın.
+        Constraint-based oda yerleştirme — her oda kendi boyutunu alır.
+
+        1. Her oda için ROOM_DEFAULTS'tan hedef genişlik hesapla
+        2. target_area / row_h → gerçekçi genişlik
+        3. Kalan alanı orantılı dağıt (boşluk bırakma)
+        4. Aspect ratio 1:1 ile 1:2 arası zorla
         """
         if not rooms:
             return
@@ -733,37 +777,67 @@ class FloorPlanner:
         total_wall = (n - 1) * iw
         available_w = row_w - total_wall
 
-        # Her odanın genişliğini target area oranına göre hesapla
-        total_area = sum(max(rm.area, 4.0) for rm in rooms)
+        # ── Adım 1: Her oda için hedef genişlik hesapla ──────────────
+        target_widths = []
+        for rm in rooms:
+            rd = ROOM_DEFAULTS.get(rm.room_type, {"min_w": 2.5, "max_w": 4.0, "min_area": 6})
+            target_area = max(rm.area, rd.get("min_area", 4.0))
+
+            # Genişlik = alan / zone derinliği
+            ideal_w = target_area / row_h if row_h > 0 else rd.get("min_w", 2.5)
+
+            # Min/max clamp
+            min_w = rd.get("min_w", 1.5)
+            max_w = rd.get("max_w", 6.0)
+            ideal_w = max(min_w, min(max_w, ideal_w))
+
+            # Aspect ratio check: width/depth 1:2 max
+            if row_h > ideal_w * 2.5:
+                ideal_w = row_h / 2.0  # en az yarı derinlik kadar genişlik
+
+            target_widths.append(ideal_w)
+
+        # ── Adım 2: Toplam genişliği mevcut alana sığdır ─────────────
+        total_target_w = sum(target_widths)
+
+        if total_target_w > 0:
+            scale = available_w / total_target_w
+        else:
+            scale = 1.0
+
+        # Ölçeklenmiş genişlikler
+        final_widths = []
+        for i, rm in enumerate(rooms):
+            rd = ROOM_DEFAULTS.get(rm.room_type, {"min_w": 1.5})
+            w = target_widths[i] * scale
+            w = max(w, rd.get("min_w", 1.5))  # minimum genişlikten küçülmesin
+            final_widths.append(w)
+
+        # Son düzeltme: toplam = available_w olsun
+        total_final = sum(final_widths)
+        if total_final > 0 and abs(total_final - available_w) > 0.01:
+            adjust = available_w / total_final
+            final_widths = [w * adjust for w in final_widths]
+
+        # ── Adım 3: Yerleştir ────────────────────────────────────────
         cursor_x = x_start
 
         for i, rm in enumerate(rooms):
-            target_area = max(rm.area, 4.0)
-            ratio = target_area / total_area if total_area > 0 else 1.0 / n
-            room_w = available_w * ratio
-            room_w = max(room_w, MIN_ROOM_DIM)  # minimum kenar
-
-            # Alan fitting — depth ayarla
-            actual_area = room_w * row_h
-            if actual_area > target_area * 1.3 and row_h > MIN_ROOM_DIM:
-                # Çok büyük çıkıyorsa genişliği küçült
-                room_w = target_area / row_h
-                room_w = max(room_w, MIN_ROOM_DIM)
+            room_w = round(final_widths[i], 3)
 
             # Hatch pattern
             hatch = ""
-            if row_type == "wet":
-                if rm.room_type in ("banyo", "wc"):
-                    hatch = "ANSI37"
-                elif rm.room_type == "mutfak":
-                    hatch = "DOTS"
+            if rm.room_type in ("banyo", "wc"):
+                hatch = "ANSI37"
+            elif rm.room_type == "mutfak":
+                hatch = "DOTS"
 
             r.rooms.append(PlacedRoom(
                 name=rm.name,
                 room_type=rm.room_type,
                 x=round(cursor_x, 3),
                 y=round(y_start, 3),
-                width=round(room_w, 3),
+                width=room_w,
                 depth=round(row_h, 3),
                 unit_id=unit_id,
                 hatch_pattern=hatch,
@@ -816,16 +890,20 @@ class FloorPlanner:
         room: PlacedRoom, side: str,
         rx1: float, rx2: float, wall_y: float,
     ) -> None:
-        """Yatay duvara pencere ekle."""
-        win_w = min(1.50, room.width * 0.55)
-        win_w = max(win_w, 0.80)
+        """Yatay duvara pencere ekle — oda tipine göre boyut."""
+        # Oda tipine göre pencere boyutu
+        preferred_block = WINDOW_BY_ROOM.get(room.room_type, "WINDOW_150x150")
+        from core.blocks import WINDOW_SPECS
+        spec = WINDOW_SPECS.get(preferred_block, {"width": 1.50})
+        win_w = min(spec["width"], room.width * 0.70)
+        win_w = max(win_w, 0.60)
         win_x = rx1 + (room.width - win_w) / 2
 
         r.windows.append(PlacedWindow(
             x=round(win_x, 3),
             y=round(wall_y, 3),
             width=round(win_w, 3),
-            height=1.50,
+            height=spec.get("height", 1.50),
             rotation=0,
             block_name=_pick_window_block(win_w),
             wall_side=side,

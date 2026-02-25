@@ -51,8 +51,8 @@ AIA_LAYERS: dict[str, dict] = {
     "A-WALL-HATCH": {"color": 8, "lineweight": 0,   "desc": "Duvar kesit hatch"},
     "A-FLOR-HATCH": {"color": 253, "lineweight": 0, "desc": "Zemin hatch (ıslak)"},
     "A-DIMS":       {"color": 1, "lineweight": 18,  "desc": "Ölçülendirme"},
-    "A-TEXT":       {"color": 7, "lineweight": 25,  "desc": "Metin"},
-    "A-ANNO":       {"color": 7, "lineweight": 18,  "desc": "Oda/Alan notasyonu"},
+    "A-TEXT":       {"color": 2, "lineweight": 25,  "desc": "Metin"},
+    "A-ANNO":       {"color": 2, "lineweight": 18,  "desc": "Oda/Alan notasyonu"},
     "A-GRID":       {"color": 9, "lineweight": 9,   "desc": "Aks gridleri"},
     "A-BNDRY":      {"color": 7, "lineweight": 70,  "desc": "Yapı sınırı"},
     # Vaziyet Planı

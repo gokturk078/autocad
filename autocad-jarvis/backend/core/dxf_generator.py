@@ -895,30 +895,31 @@ class ArchitecturalDXFGenerator:
     # ══════════════════════════════════════════════════════════════════════
 
     def _draw_room_labels(self, msp, plan: FloorPlanResult, cx: float, cy: float) -> None:
-        """Oda isim + alan + birim kodu etiketi."""
+        """Profesyonel 3 satırlı oda etiketi: İSİM + ALAN + KOT."""
+        floor_label = "±0.00" if plan.floor_number == 0 else f"+{plan.floor_number * 2.80:.2f}"
+
         for room in plan.rooms:
             rcx, rcy = room.center
             abs_x = cx + rcx
             abs_y = cy + rcy
 
-            # Oda ismi (büyük)
+            # Satır 1: Oda ismi (BÜYÜK HARF — profesyonel standart)
             msp.add_text(
                 room.name.upper(),
-                dxfattribs={"layer": "A-ANNO", "height": 0.20},
-            ).set_placement((abs_x, abs_y + 0.25), align=ezdxf.enums.TextEntityAlignment.CENTER)
+                dxfattribs={"layer": "A-ANNO", "style": "ROOM_NAME", "height": 0.15},
+            ).set_placement((abs_x, abs_y + 0.20), align=ezdxf.enums.TextEntityAlignment.CENTER)
 
-            # Alan (m²)
+            # Satır 2: Alan (m²)
             msp.add_text(
                 f"{room.area:.2f} m²",
-                dxfattribs={"layer": "A-ANNO", "height": 0.15},
-            ).set_placement((abs_x, abs_y - 0.05), align=ezdxf.enums.TextEntityAlignment.CENTER)
+                dxfattribs={"layer": "A-ANNO", "style": "ANNO", "height": 0.10},
+            ).set_placement((abs_x, abs_y - 0.02), align=ezdxf.enums.TextEntityAlignment.CENTER)
 
-            # Birim kodu (daire ID)
-            if room.unit_id and room.unit_id != "COMMON":
-                msp.add_text(
-                    f"[{room.unit_id}]",
-                    dxfattribs={"layer": "A-ANNO", "height": 0.10, "color": 8},
-                ).set_placement((abs_x, abs_y - 0.30), align=ezdxf.enums.TextEntityAlignment.CENTER)
+            # Satır 3: Kat kotu
+            msp.add_text(
+                floor_label,
+                dxfattribs={"layer": "A-ANNO", "style": "ANNO", "height": 0.08},
+            ).set_placement((abs_x, abs_y - 0.20), align=ezdxf.enums.TextEntityAlignment.CENTER)
 
     def _draw_3level_dims(self, msp, plan: FloorPlanResult, cx: float, cy: float) -> None:
         """
@@ -1064,7 +1065,7 @@ class ArchitecturalDXFGenerator:
             dim_text = f"{int(win.width * 100)}×{int(win.height * 100)}"
             msp.add_text(
                 dim_text,
-                dxfattribs={"layer": "A-GLAZ", "height": 0.08, "color": 8},
+                dxfattribs={"layer": "A-GLAZ", "style": "ANNO", "height": 0.08},
             ).set_placement((wx, wy - 0.25), align=ezdxf.enums.TextEntityAlignment.CENTER)
 
     def _draw_floor_level_mark(self, msp, cx: float, cy: float,
@@ -1104,7 +1105,7 @@ class ArchitecturalDXFGenerator:
         # "KAT KOTU" alt etiket
         msp.add_text(
             "KAT KOTU",
-            dxfattribs={"layer": "A-ANNO", "height": 0.10, "color": 8},
+            dxfattribs={"layer": "A-ANNO", "style": "ANNO", "height": 0.10},
         ).set_placement((mark_x + 0.6, mark_y - 0.05))
 
     def _draw_north_arrow(self, msp, cx: float, cy: float,
