@@ -355,11 +355,12 @@ class AIArchitect:
 
     async def design_project(self, user_prompt: str) -> ProjectRequest:
         """
-        Kullanıcı prompt'unu analiz et → professyonel ProjectRequest döndür.
+        Multi-step AI tasarım pipeline:
         
-        İki aşamalı pipeline:
-          1. GPT-5 Thinking mode → spatial layout + compliance pre-check
-          2. Structured JSON output → door/window schedule dahil
+        1. Bina tipini algıla → template seç
+        2. Template kurallarını prompt'a enjekte et
+        3. AI tasarım yapsın
+        4. JSON parse + validate
         """
         if not self.is_ready:
             raise RuntimeError("OpenAI API key yapılandırılmamış (.env dosyasını kontrol edin)")
@@ -367,23 +368,41 @@ class AIArchitect:
         print(f"[{_ts()}] [AI-ARCHITECT] 🏗️ Proje tasarlanıyor: '{user_prompt[:80]}...'")
         print(f"[{_ts()}] [AI-ARCHITECT] Model: {self.model} ({self.provider})")
 
+        # ── Bina tipi template enjeksiyonu ────────────────────────────────
+        try:
+            from core.building_types import get_template_prompt
+            template_prompt = get_template_prompt(user_prompt)
+            print(f"[{_ts()}] [AI-ARCHITECT] Bina tipi şablonu eklendi")
+        except Exception:
+            template_prompt = ""
+
+        # Kullanıcı prompt'unu zenginleştir
+        enhanced_user_prompt = f"""Proje talebi: {user_prompt}
+
+{template_prompt}
+
+ÖNEMLİ HATIRLATMA:
+- Bina boyutlarını parsel çekme mesafelerine göre HESAPLA
+- TAKS ve KAKS sınırlarını ASLA aşma
+- Her odaya gerçekçi width ve depth ver
+- Oda aspect ratio 1:1 ile 1:2 arasında olmalı
+- Salon cepheye (pencereli duvara), banyo/WC iç sıraya yerleştir"""
+
         try:
             # Provider-aware API params
             api_params = {
                 "model": self.model,
                 "messages": [
                     {"role": "system", "content": ARCHITECT_SYSTEM_PROMPT},
-                    {"role": "user", "content": f"Proje talebi: {user_prompt}"},
+                    {"role": "user", "content": enhanced_user_prompt},
                 ],
                 "response_format": {"type": "json_object"},
             }
 
             if self.provider == "openrouter":
-                # Gemini: standard params (temperature + max_tokens destekli)
                 api_params["max_tokens"] = 8192
                 api_params["temperature"] = 0.12
             else:
-                # GPT-5: max_completion_tokens + no temperature
                 api_params["max_completion_tokens"] = 4000
 
             response = await self.client.chat.completions.create(**api_params)
