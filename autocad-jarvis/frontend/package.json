@@ -1,0 +1,29 @@
+{
+    "name": "jarvis-copilot",
+    "version": "1.0.0",
+    "private": true,
+    "scripts": {
+        "dev": "next dev",
+        "build": "next build",
+        "start": "next start",
+        "lint": "next lint"
+    },
+    "dependencies": {
+        "dxf-parser": "^1.1.2",
+        "framer-motion": "^12.34.3",
+        "next": "14.2.15",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "three": "^0.183.1"
+    },
+    "devDependencies": {
+        "@types/node": "^20.14.10",
+        "@types/react": "^18.3.3",
+        "@types/react-dom": "^18.3.0",
+        "@types/three": "^0.183.1",
+        "autoprefixer": "^10.4.19",
+        "postcss": "^8.4.39",
+        "tailwindcss": "^3.4.4",
+        "typescript": "^5.5.3"
+    }
+}
